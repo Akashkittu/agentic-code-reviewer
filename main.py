@@ -61,6 +61,18 @@ def build_initial_state(request: ReviewRequest) -> CodeReviewState:
     }
 
 
+def get_planner_llm_provider(state: CodeReviewState) -> str:
+    decisions = state.get("metadata", {}).get("planner_decisions", [])
+
+    for item in reversed(decisions):
+        source = item.get("source", "")
+
+        if isinstance(source, str) and source.startswith("llm:"):
+            return source.replace("llm:", "", 1)
+
+    return "not_used"
+
+
 def print_tool_trace(state: CodeReviewState) -> None:
     print("\nLangGraph tool execution trace:")
 
@@ -107,8 +119,11 @@ def print_final_summary(state: CodeReviewState) -> None:
     final_report = state.get("final_report")
 
     if final_report:
+        planner_llm_provider = get_planner_llm_provider(state)
+
         print(f"Overall score: {final_report.overall_score}/100")
-        print(f"LLM status: {final_report.llm_status}")
+        print(f"Final report LLM status: {final_report.llm_status}")
+        print(f"Planner LLM provider: {planner_llm_provider}")
         print(f"Fallback mode: {final_report.fallback_mode}")
         print(f"Final recommendation: {final_report.final_recommendation}")
 

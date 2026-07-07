@@ -8,6 +8,7 @@ from app.tools.dependency_check import dependency_check_tool
 from app.tools.env_config_check import env_config_check_tool
 from app.tools.llm_review import llm_review_tool
 from app.tools.readme_review import readme_review_tool
+from app.tools.repo_hygiene import repo_hygiene_tool
 from app.tools.repo_structure import repo_structure_tool
 from app.tools.security_scan import security_scan_tool
 from app.tools.test_discovery import test_discovery_tool
@@ -24,6 +25,7 @@ TOOL_REGISTRY: dict[str, ToolFunction] = {
     "code_search_tool": code_search_tool,
     "test_discovery_tool": test_discovery_tool,
     "readme_review_tool": readme_review_tool,
+    "repo_hygiene_tool": repo_hygiene_tool,
     "llm_review_tool": llm_review_tool,
 }
 
@@ -36,6 +38,7 @@ DEFAULT_PLANNER_TOOL_ORDER = [
     "code_search_tool",
     "test_discovery_tool",
     "readme_review_tool",
+    "repo_hygiene_tool",
     "llm_review_tool",
 ]
 

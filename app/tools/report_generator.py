@@ -47,17 +47,28 @@ def _sort_findings(findings: list[Finding]) -> list[Finding]:
 
 
 def _calculate_score(findings: list[Finding]) -> int:
-    score = 100
+    """
+    Calculate a user-friendly repo health score.
 
-    for finding in findings:
-        penalty = SEVERITY_PENALTY.get(finding.severity, 0)
+    We cap penalties per severity so repeated similar findings do not
+    immediately force every reviewed repo to 0/100.
+    """
 
-        if finding.importance_percent >= 90:
-            penalty += 2
+    if not findings:
+        return 100
 
-        score -= penalty
+    counts = _count_by_severity(findings)
 
-    return max(0, min(100, score))
+    penalty = 0
+    penalty += min(40, counts["critical"] * 14)
+    penalty += min(25, counts["high"] * 7)
+    penalty += min(15, counts["medium"] * 3)
+    penalty += min(8, counts["low"] * 1)
+    penalty += min(5, counts["info"] * 0.5)
+
+    score = round(100 - penalty)
+
+    return max(5, min(100, score))
 
 
 def _count_by_severity(findings: list[Finding]) -> dict[str, int]:

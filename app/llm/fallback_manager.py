@@ -40,7 +40,9 @@ class FallbackLLMManager:
                 return result
 
             except Exception as exc:
-                errors.append(f"{provider.provider_name}: {exc}")
+                error_message = f"{provider.provider_name}: {type(exc).__name__}: {exc}"
+                print("LLM PROVIDER FAILED:", error_message)
+                errors.append(error_message)
 
         static_text = self._static_fallback_text(errors)
 

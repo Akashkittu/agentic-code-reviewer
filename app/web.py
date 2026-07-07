@@ -27,6 +27,40 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
 
+MAX_EXTRACTED_ZIP_BYTES = 50 * 1024 * 1024
+
+
+def _safe_extract_zip(zip_ref: zipfile.ZipFile, extract_dir: Path) -> None:
+    extract_dir = extract_dir.resolve()
+    total_size = 0
+
+    for member in zip_ref.infolist():
+        total_size += member.file_size
+
+        if total_size > MAX_EXTRACTED_ZIP_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail="Zip file is too large for this demo.",
+            )
+
+        target_path = (extract_dir / member.filename).resolve()
+
+        try:
+            target_path.relative_to(extract_dir)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsafe zip file path detected.",
+            ) from exc
+
+        if member.is_dir():
+            target_path.mkdir(parents=True, exist_ok=True)
+            continue
+
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with zip_ref.open(member) as source, target_path.open("wb") as target:
+            shutil.copyfileobj(source, target)
 
 def build_initial_state(request: ReviewRequest) -> CodeReviewState:
     return {
@@ -74,6 +108,16 @@ def _serialize_final_report(report: Any) -> dict[str, Any] | None:
 
     return dict(report)
 
+def _get_planner_llm_provider(state: CodeReviewState) -> str:
+    decisions = state.get("metadata", {}).get("planner_decisions", [])
+
+    for item in reversed(decisions):
+        source = item.get("source", "")
+
+        if isinstance(source, str) and source.startswith("llm:"):
+            return source.replace("llm:", "", 1)
+
+    return "not_used"
 
 def _build_api_response(final_state: CodeReviewState) -> dict[str, Any]:
     final_report = final_state.get("final_report")
@@ -88,6 +132,8 @@ def _build_api_response(final_state: CodeReviewState) -> dict[str, Any]:
         "repo_files_count": len(final_state.get("repo_files", [])),
         "important_files_count": len(final_state.get("important_files", [])),
         "important_files": final_state.get("important_files", []),
+        "planner_llm_provider": _get_planner_llm_provider(final_state),
+        "final_report_llm_status": final_report.llm_status if final_report else final_state.get("llm_status"),
         "llm_status": final_state.get("llm_status"),
         "fallback_mode": final_state.get("fallback_mode"),
         "llm_error": final_state.get("llm_error"),
@@ -162,7 +208,7 @@ async def review_uploaded_zip(
         )
 
     temp_root = Path(tempfile.mkdtemp(prefix="uploaded_repo_review_"))
-    zip_path = temp_root / file.filename
+    zip_path = temp_root / Path(file.filename).name
 
     try:
         with zip_path.open("wb") as buffer:
@@ -172,7 +218,7 @@ async def review_uploaded_zip(
         extract_dir.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            zip_ref.extractall(extract_dir)
+            _safe_extract_zip(zip_ref, extract_dir)
 
         children = [
             child

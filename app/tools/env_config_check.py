@@ -52,17 +52,65 @@ def _read_text(repo_root: Path, relative_path: str, max_chars: int = 100_000) ->
 
 
 def _looks_like_secret_assignment(line: str) -> bool:
-    lower = line.lower().strip()
+    """
+    Return True only when a secret-like variable/key has a real hardcoded value.
+
+    Should NOT flag:
+    - os.getenv("OPENAI_API_KEY")
+    - os.environ["OPENAI_API_KEY"]
+    - settings.OPENAI_API_KEY
+    - placeholders like your_key_here
+    - empty/None values
+    """
+
+    raw = line.strip()
+    lower = raw.lower()
 
     if not lower or lower.startswith("#"):
         return False
 
-    has_secret_word = any(pattern in lower for pattern in SECRET_PATTERNS)
-    has_assignment = "=" in lower or ":" in lower
+    # Ignore normal env reads / safe references.
+    safe_usage_markers = [
+        "os.getenv(",
+        "os.environ",
+        "getenv(",
+        "settings.",
+        "config.",
+        "none",
+        "null",
+        "true",
+        "false",
+    ]
 
-    if not has_secret_word or not has_assignment:
+    if any(marker in lower for marker in safe_usage_markers):
         return False
 
+    # We only care about assignment-style lines.
+    # Examples:
+    # API_KEY = "abc"
+    # OPENAI_API_KEY="abc"
+    # database_url: "postgres://..."
+    if "=" in raw:
+        left, right = raw.split("=", 1)
+        secret_name = left.split(":")[0].strip().strip("'\"")
+        value = right.strip().rstrip(",")
+    elif ":" in raw:
+        left, right = raw.split(":", 1)
+        secret_name = left.strip().strip("'\"")
+        value = right.strip().rstrip(",")
+    else:
+        return False
+
+    secret_name_lower = secret_name.lower()
+    value_lower = value.lower().strip().strip("'\"")
+
+    # Secret word must be in the variable/key name, not just anywhere in the line.
+    has_secret_name = any(pattern in secret_name_lower for pattern in SECRET_PATTERNS)
+
+    if not has_secret_name:
+        return False
+
+    # Ignore placeholders/examples.
     fake_or_placeholder_words = [
         "your_",
         "example",
@@ -72,11 +120,29 @@ def _looks_like_secret_assignment(line: str) -> bool:
         "changeme",
         "xxx",
         "here",
+        "replace_me",
+        "todo",
+        "sample",
+        "test_value",
+        "fake_value",   
     ]
 
-    if any(word in lower for word in fake_or_placeholder_words):
+    if any(word in value_lower for word in fake_or_placeholder_words):
         return False
 
+    # Ignore empty values.
+    if value_lower in {"", "''", '""'}:
+        return False
+
+    # Ignore collection/type definitions like:
+    # SECRET_PATTERNS = [...]
+    # api_keys = []
+    if value_lower.startswith(("[", "{", "(")):
+        return False
+
+    # If value is a real string/number-like hardcoded value, flag it.
+    # Example: API_KEY = "sk_test_fake_key_123"
+    # Example: DATABASE_URL = "postgres://user:pass@localhost/db"
     return True
 
 

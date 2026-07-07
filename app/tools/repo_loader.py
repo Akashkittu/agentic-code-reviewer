@@ -20,7 +20,6 @@ IGNORED_DIRS = {
     "venv",
     ".venv",
     "env",
-    ".env",
     "dist",
     "build",
     ".next",
