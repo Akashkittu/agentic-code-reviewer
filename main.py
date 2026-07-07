@@ -6,10 +6,12 @@ from pydantic import ValidationError
 
 from app.schemas import ReviewRequest
 from app.state import CodeReviewState
+from app.tools.code_search import code_search_tool
 from app.tools.dependency_check import dependency_check_tool
 from app.tools.env_config_check import env_config_check_tool
 from app.tools.repo_loader import repo_loader_tool
 from app.tools.repo_structure import repo_structure_tool
+from app.tools.security_scan import security_scan_tool
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,6 +110,14 @@ def main() -> None:
     print("\nRunning env/config checker...")
     state = env_config_check_tool(state)
     print_tool_result("Env/config check result", state)
+
+    print("\nRunning security scanner...")
+    state = security_scan_tool(state)
+    print_tool_result("Security scan result", state)
+
+    print("\nRunning code search...")
+    state = code_search_tool(state)
+    print_tool_result("Code search result", state)
 
     print("\nCurrent state summary:")
     print(f"Repo path: {state['repo_path']}")
