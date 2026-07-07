@@ -4,17 +4,9 @@ import sys
 
 from pydantic import ValidationError
 
+from app.graph import run_code_review_graph
 from app.schemas import ReviewRequest
 from app.state import CodeReviewState
-from app.tools.code_search import code_search_tool
-from app.tools.dependency_check import dependency_check_tool
-from app.tools.readme_review import readme_review_tool
-from app.tools.report_generator import report_generator_tool
-from app.tools.test_discovery import test_discovery_tool
-from app.tools.env_config_check import env_config_check_tool
-from app.tools.repo_loader import repo_loader_tool
-from app.tools.repo_structure import repo_structure_tool
-from app.tools.security_scan import security_scan_tool
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +50,7 @@ def build_initial_state(request: ReviewRequest) -> CodeReviewState:
         "llm_status": "not_used",
         "llm_error": None,
         "fallback_mode": False,
+        "tool_decision": None,
         "tool_results": [],
         "findings": [],
         "skipped_tools": [],
@@ -68,11 +61,66 @@ def build_initial_state(request: ReviewRequest) -> CodeReviewState:
     }
 
 
-def print_tool_result(title: str, state: CodeReviewState) -> None:
-    latest_result = state["tool_results"][-1]
+def print_tool_trace(state: CodeReviewState) -> None:
+    print("\nLangGraph tool execution trace:")
 
-    print(f"\n{title}:")
-    print(latest_result.model_dump_json(indent=2))
+    tool_results = state.get("tool_results", [])
+
+    if not tool_results:
+        print("- No tools executed")
+        return
+
+    for index, result in enumerate(tool_results, start=1):
+        print(
+            f"{index}. {result.tool_name} "
+            f"-> {result.status.upper()} "
+            f"-> {result.summary}"
+        )
+
+
+def print_final_summary(state: CodeReviewState) -> None:
+    print("\nFinal state summary:")
+    print(f"Repo path: {state.get('repo_path')}")
+    print(f"Repo type: {state.get('repo_type')}")
+    print(f"Total readable files: {len(state.get('repo_files', []))}")
+    print(f"Important files found: {len(state.get('important_files', []))}")
+    print(f"Tools executed: {len(state.get('tool_results', []))}")
+    print(f"Total findings: {len(state.get('findings', []))}")
+
+    final_report = state.get("final_report")
+
+    if final_report:
+        print(f"Overall score: {final_report.overall_score}/100")
+        print(f"LLM status: {final_report.llm_status}")
+        print(f"Fallback mode: {final_report.fallback_mode}")
+        print(f"Final recommendation: {final_report.final_recommendation}")
+
+    print("\nFindings:")
+    findings = state.get("findings", [])
+
+    if findings:
+        for finding in findings:
+            location = ""
+
+            if finding.file:
+                location = f" ({finding.file}"
+
+                if finding.line:
+                    location += f":{finding.line}"
+
+                location += ")"
+
+            print(
+                f"- [{finding.severity.upper()}] "
+                f"{finding.issue}{location}"
+            )
+    else:
+        print("- No findings")
+
+    if final_report:
+        print("\nGenerated files:")
+        print("- review_outputs/latest_report.json")
+        print("- review_outputs/latest_report.md")
 
 
 def main() -> None:
@@ -92,86 +140,31 @@ def main() -> None:
     print("Input validation passed.")
     print(json.dumps(request.model_dump(mode="json"), indent=2))
 
-    state = build_initial_state(request)
+    initial_state = build_initial_state(request)
 
-    print("\nRunning repo loader...")
-    state = repo_loader_tool(state)
-    print_tool_result("Repo loader result", state)
+    print("\nStarting LangGraph workflow...")
+    final_state = run_code_review_graph(initial_state)
 
-    if state["tool_results"][-1].status == "failed":
-        print("\nRepo loading failed. Stopping workflow.")
-        sys.exit(400)
+    print_tool_trace(final_state)
+    print_final_summary(final_state)
 
-    print("\nRunning repo structure analyzer...")
-    state = repo_structure_tool(state)
-    print_tool_result("Repo structure result", state)
+    tool_results = final_state.get("tool_results", [])
 
-    print("\nRunning dependency checker...")
-    state = dependency_check_tool(state)
-    print_tool_result("Dependency check result", state)
+    if tool_results:
+        latest_result = tool_results[-1]
 
-    print("\nRunning env/config checker...")
-    state = env_config_check_tool(state)
-    print_tool_result("Env/config check result", state)
+        if (
+            latest_result.status == "failed"
+            and latest_result.tool_name == "repo_loader_tool"
+        ):
+            print("\nRepo loading failed. Workflow stopped early.")
+            sys.exit(400)
 
-    print("\nRunning security scanner...")
-    state = security_scan_tool(state)
-    print_tool_result("Security scan result", state)
-
-    print("\nRunning code search...")
-    state = code_search_tool(state)
-    print_tool_result("Code search result", state)
-
-    print("\nRunning test discovery...")
-    state = test_discovery_tool(state)
-    print_tool_result("Test discovery result", state)
-
-    print("\nRunning README review...")
-    state = readme_review_tool(state)
-    print_tool_result("README review result", state)
-
-    print("\nGenerating final report...")
-    state = report_generator_tool(state)
-    print_tool_result("Report generator result", state)
-
-    print("\nCurrent state summary:")
-    print(f"Repo path: {state['repo_path']}")
-    print(f"Repo type: {state['repo_type']}")
-    print(f"Total readable files: {len(state['repo_files'])}")
-    print(f"Important files found: {len(state['important_files'])}")
-
-    print("\nLanguages:")
-    for language in state["metadata"].get("languages", []):
-        print(f"- {language}")
-
-    print("\nFrameworks:")
-    frameworks = state["metadata"].get("frameworks", [])
-    if frameworks:
-        for framework in frameworks:
-            print(f"- {framework}")
-    else:
-        print("- None detected")
-
-    print("\nMain files:")
-    main_files = state["metadata"].get("main_files", [])
-    if main_files:
-        for file_path in main_files:
-            print(f"- {file_path}")
-    else:
-        print("- No obvious main file found")
-
-    print("\nFolder signals:")
-    for key, value in state["metadata"].get("folders", {}).items():
-        print(f"- {key}: {value}")
-
-    print("\nFindings so far:")
-    if state["findings"]:
-        for finding in state["findings"]:
-            print(f"- [{finding.severity.upper()}] {finding.issue}")
-    else:
-        print("- No findings yet")
-
-    print("\nNext step will add dependency_check_tool and env_config_check_tool.")
+    print("\nLangGraph workflow completed.")
+    print(
+        "\nNext step will add LLM provider fallback: "
+        "OpenAI -> Gemini -> Claude -> static fallback."
+    )
 
 
 if __name__ == "__main__":
