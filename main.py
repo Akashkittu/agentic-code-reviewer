@@ -6,6 +6,8 @@ from pydantic import ValidationError
 
 from app.schemas import ReviewRequest
 from app.state import CodeReviewState
+from app.tools.dependency_check import dependency_check_tool
+from app.tools.env_config_check import env_config_check_tool
 from app.tools.repo_loader import repo_loader_tool
 from app.tools.repo_structure import repo_structure_tool
 
@@ -98,6 +100,14 @@ def main() -> None:
     print("\nRunning repo structure analyzer...")
     state = repo_structure_tool(state)
     print_tool_result("Repo structure result", state)
+
+    print("\nRunning dependency checker...")
+    state = dependency_check_tool(state)
+    print_tool_result("Dependency check result", state)
+
+    print("\nRunning env/config checker...")
+    state = env_config_check_tool(state)
+    print_tool_result("Env/config check result", state)
 
     print("\nCurrent state summary:")
     print(f"Repo path: {state['repo_path']}")
