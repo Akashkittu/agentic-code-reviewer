@@ -1,0 +1,8 @@
+langgraph
+pydantic
+python-dotenv
+rich
+GitPython
+openai
+google-generativeai
+anthropic
