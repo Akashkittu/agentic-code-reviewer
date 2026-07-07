@@ -1,22 +1,36 @@
 # Repo Review Agent
 
-An agentic code review workflow that analyzes a local repository, GitHub repository URL, or uploaded ZIP file and returns a structured review report.
+An agentic code review workflow that analyzes a local repository, public GitHub repository URL, or uploaded ZIP file and returns a structured review report.
 
-This project was built for the take-home assignment: **Option B — Code Review Agent**.
+The project uses LangGraph for workflow orchestration, Pydantic for validation, deterministic review tools for stable findings, and an optional LLM planner to decide which tool should run next.
 
 ## Problem
 
-Manual code review takes time, and small issues can be missed, such as:
+Manual code review takes time, and important repository issues can be missed, such as:
 
 - missing setup instructions
 - missing dependency files
-- no tests
+- missing tests
 - hardcoded secrets
 - unsafe code patterns
-- poor repo hygiene
 - weak README documentation
+- poor repository hygiene
 
-This prototype automates the first-pass repository review using a multi-step agentic workflow.
+Repo Review Agent automates the first-pass review so developers can quickly understand repo health, high-priority risks, and suggested fixes.
+
+## Features
+
+- Review a local repository path
+- Review a public GitHub repository URL
+- Review an uploaded ZIP file from the web dashboard
+- Agentic tool selection using an LLM planner
+- LangGraph-based workflow
+- Pydantic input and output validation
+- Multiple deterministic review tools
+- LLM provider fallback support
+- Static fallback mode if LLM planning fails
+- Structured JSON and Markdown reports
+- Web dashboard with score, severity breakdown, and prioritized issues
 
 ## Architecture
 
@@ -25,16 +39,300 @@ User input
 ↓
 Pydantic validation
 ↓
-Repo loader
+Repository loader
 ↓
-LangGraph workflow
+LangGraph workflow state
 ↓
-Planner chooses next tool
+LLM planner chooses next review tool
 ↓
 Tool executor runs selected tool
 ↓
 Tool result is saved in state
 ↓
-Planner chooses next step
+Planner chooses the next step
 ↓
-Final structured report
+Stopping condition is reached
+↓
+Report generator creates JSON + Markdown output
+```
+
+The LLM is used as the planner. It looks at the current review state and decides the next best tool to call. The actual findings are produced by deterministic Python tools, which keeps the review output stable and easier to validate.
+
+The final report is generated in a rule-based structured format so that the workflow can always finish safely, even if the LLM fails.
+
+## Project Structure
+
+```text
+repo-review-agent/
+├── app/
+│   ├── graph.py                 # LangGraph workflow
+│   ├── planner.py               # LLM/rule-based tool planner
+│   ├── tool_executor.py         # Runs selected tools
+│   ├── schemas.py               # Pydantic schemas
+│   ├── state.py                 # Shared workflow state
+│   ├── config.py                # App configuration
+│   ├── web.py                   # FastAPI web app
+│   ├── llm/                     # LLM providers and fallback manager
+│   ├── tools/                   # Repository review tools
+│   ├── templates/               # Web UI template
+│   └── static/                  # Web UI JavaScript/CSS
+├── sample_repo/                 # Small intentionally problematic repo for demo
+├── main.py                      # CLI entry point
+├── requirements.txt
+└── README.md
+```
+
+## Review Tools
+
+The workflow can call these tools:
+
+| Tool | Purpose |
+|---|---|
+| `repo_loader_tool` | Loads repository files and validates repo access |
+| `repo_structure_tool` | Detects project type, important files, and folder structure |
+| `dependency_check_tool` | Checks dependency files such as `requirements.txt` and `package.json` |
+| `env_config_check_tool` | Checks `.env`, `.env.example`, and hardcoded config risks |
+| `security_scan_tool` | Detects unsafe patterns like `eval`, `exec`, `os.system`, and shell usage |
+| `code_search_tool` | Searches for review signals like TODOs, prints, and debugging leftovers |
+| `test_discovery_tool` | Checks whether tests and test folders exist |
+| `readme_review_tool` | Reviews README quality and required documentation sections |
+| `repo_hygiene_tool` | Checks `.gitignore`, license, cache files, and common repo cleanliness issues |
+| `report_generator_tool` | Generates the final JSON and Markdown report |
+
+## LLM Planner and Fallback
+
+The planner can use an LLM to decide the next tool to call.
+
+Priority order:
+
+```text
+OpenAI → Gemini → Claude → Static rule-based fallback
+```
+
+If the primary provider fails because of a missing API key, timeout, invalid response, or server error, the fallback manager can try the next provider. If all LLM providers fail, the project can still use safe deterministic tools and generate a partial structured report.
+
+Example terminal output:
+
+```text
+Planner LLM provider: gemini
+Final report LLM status: not_used
+Fallback mode: False
+```
+
+Meaning:
+
+- Gemini was used to plan the next review tools.
+- The final report was generated by the rule-based report generator.
+- Fallback mode was not needed because the planner worked.
+
+## Setup
+
+### 1. Clone the repository
+
+```bash
+git clone <your-repo-url>
+cd repo-review-agent
+```
+
+### 2. Create a virtual environment
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Add environment variables
+
+Create a `.env` file if you want to use LLM planning:
+
+```env
+OPENAI_API_KEY=your_openai_key_here
+GEMINI_API_KEY=your_gemini_key_here
+ANTHROPIC_API_KEY=your_claude_key_here
+```
+
+At least one provider key is enough. If no LLM key is available, the workflow can still run using rule-based fallback behavior.
+
+Keep real keys only in `.env`. Do not commit `.env` to GitHub.
+
+## CLI Usage
+
+### Review the sample repo
+
+```bash
+python main.py --repo ./sample_repo
+```
+
+### Review a local repository
+
+```bash
+python main.py --repo /path/to/your/repo
+```
+
+Windows example:
+
+```powershell
+python main.py --repo C:\Users\akash\Downloads\my-project
+```
+
+### Review a public GitHub repository
+
+```bash
+python main.py --repo-url https://github.com/user/project
+```
+
+### Change planner iterations
+
+```bash
+python main.py --repo ./sample_repo --max-iterations 10
+```
+
+The `max_iterations` value prevents the agent from running forever. After the maximum number of planner decisions is reached, the workflow safely stops planning and generates the final report.
+
+## Web Dashboard Usage
+
+Start the FastAPI app:
+
+```bash
+uvicorn app.web:app --reload
+```
+
+Open the dashboard in your browser:
+
+```text
+http://127.0.0.1:8000
+```
+
+The dashboard supports:
+
+- local path review
+- public GitHub URL review
+- ZIP upload review
+- score summary
+- severity breakdown
+- priority fixes
+- downloadable JSON report
+
+## Output
+
+After every review, the project generates:
+
+```text
+review_outputs/latest_report.json
+review_outputs/latest_report.md
+```
+
+Example finding format:
+
+```json
+{
+  "category": "security",
+  "severity": "critical",
+  "importance_percent": 100,
+  "file": "main.py",
+  "line": 16,
+  "issue": "Use of eval() detected.",
+  "why_it_matters": "eval() can execute arbitrary code and create security risks.",
+  "suggested_fix": "Avoid eval(). Use safe parsing or explicit logic instead.",
+  "source_tool": "security_scan_tool"
+}
+```
+
+## Severity Levels
+
+| Severity | Meaning |
+|---|---|
+| Critical | Can leak data, break the app, or create serious security risk |
+| High | Important feature, setup, security, or reliability issue |
+| Medium | Affects quality, maintainability, or consistency |
+| Low | Cleanup or improvement suggestion |
+| Info | Informational review signal |
+
+## Scoring
+
+The score starts from 100 and decreases based on issue severity. Critical and high-severity findings reduce the score more than medium, low, or info findings.
+
+A very low score means the repository needs urgent fixes before it should be considered production-ready.
+
+## Example Demo Flow
+
+```bash
+python main.py --repo ./sample_repo
+```
+
+Expected flow:
+
+```text
+Input validation passed.
+Starting LangGraph agentic workflow...
+LangGraph tool execution trace:
+1. repo_loader_tool -> PASSED
+2. repo_structure_tool -> PASSED
+3. dependency_check_tool -> FAILED
+4. env_config_check_tool -> FAILED
+5. security_scan_tool -> FAILED
+...
+report_generator_tool -> PASSED
+```
+
+The `sample_repo` intentionally contains issues such as a hardcoded secret, unsafe code pattern, weak README, missing tests, and missing `.gitignore`. This makes it useful for demonstrating that the agent can detect real review problems.
+
+## Design Decisions
+
+### Why LangGraph?
+
+LangGraph makes the workflow stateful. Each tool result is stored in the shared state, and the next planner decision can use earlier results.
+
+### Why Pydantic?
+
+Pydantic validates user input, tool decisions, and final structured report data. This prevents invalid repo input, unsupported tool names, and badly shaped output.
+
+### Why deterministic tools?
+
+The tools perform stable checks using code logic instead of relying only on LLM text generation. This reduces hallucination and makes findings easier to trust.
+
+### Why rule-based final report?
+
+The report generator guarantees that the workflow always returns a JSON and Markdown report, even when the LLM fails or reaches the iteration limit.
+
+## Limitations
+
+- The prototype does not fully understand deep business logic across many files.
+- It does not currently run a full dependency vulnerability database scan.
+- It does not post comments directly on GitHub pull requests.
+- It does not execute the application end-to-end.
+- Some findings are heuristic and may need project-specific tuning.
+
+## Future Improvements
+
+- Add dependency graph analysis
+- Add test execution and coverage summary
+- Add lint/format runner integration
+- Add GitHub PR comment support
+- Add deeper multi-file code reasoning
+- Add vulnerability database checks
+- Add duplicate-finding grouping
+- Add better scoring based on repo type and project maturity
+
+## Safety Notes
+
+- Do not commit `.env` files.
+- Use `.env.example` for placeholder keys only.
+- Review generated findings before applying fixes.
+- Avoid running unknown repositories with unrestricted shell execution.
+
