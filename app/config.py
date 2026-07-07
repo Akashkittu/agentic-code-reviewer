@@ -10,6 +10,13 @@ class Settings:
     GEMINI_API_KEY: str | None = os.getenv("GEMINI_API_KEY")
     ANTHROPIC_API_KEY: str | None = os.getenv("ANTHROPIC_API_KEY")
 
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    ANTHROPIC_MODEL: str = os.getenv(
+        "ANTHROPIC_MODEL",
+        "claude-3-5-haiku-latest",
+    )
+
     PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "openai")
 
     MAX_LLM_RETRIES: int = int(os.getenv("MAX_LLM_RETRIES", "2"))

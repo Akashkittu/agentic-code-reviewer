@@ -181,6 +181,11 @@ def _write_reports(report: ReviewReport, state: CodeReviewState) -> dict[str, st
     frameworks = metadata.get("frameworks", [])
     main_files = metadata.get("main_files", [])
 
+    llm_review = metadata.get("llm_review", {})
+    llm_provider = llm_review.get("provider", "N/A")
+    llm_attempted = llm_review.get("attempted_providers", [])
+    llm_text = llm_review.get("text", "No LLM review generated.")
+
     findings_markdown = "\n".join(
         _finding_to_markdown(finding, index)
         for index, finding in enumerate(report.findings, start=1)
@@ -216,6 +221,13 @@ def _write_reports(report: ReviewReport, state: CodeReviewState) -> dict[str, st
 - **Medium:** {severity_counts["medium"]}
 - **Low:** {severity_counts["low"]}
 - **Info:** {severity_counts["info"]}
+
+## LLM Review
+
+- **Provider used:** {llm_provider}
+- **Attempted providers:** {", ".join(llm_attempted) if llm_attempted else "None"}
+
+{llm_text}
 
 ## Findings
 

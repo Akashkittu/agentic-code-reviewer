@@ -4,5 +4,5 @@ python-dotenv
 rich
 GitPython
 openai
-google-generativeai
+google-genai
 anthropic
