@@ -30,3 +30,5 @@ build/
 
 # Temporary cloned repos
 repo_review_*
+
+review_outputs/
