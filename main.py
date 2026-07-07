@@ -8,6 +8,8 @@ from app.schemas import ReviewRequest
 from app.state import CodeReviewState
 from app.tools.code_search import code_search_tool
 from app.tools.dependency_check import dependency_check_tool
+from app.tools.readme_review import readme_review_tool
+from app.tools.test_discovery import test_discovery_tool
 from app.tools.env_config_check import env_config_check_tool
 from app.tools.repo_loader import repo_loader_tool
 from app.tools.repo_structure import repo_structure_tool
@@ -118,6 +120,14 @@ def main() -> None:
     print("\nRunning code search...")
     state = code_search_tool(state)
     print_tool_result("Code search result", state)
+
+    print("\nRunning test discovery...")
+    state = test_discovery_tool(state)
+    print_tool_result("Test discovery result", state)
+
+    print("\nRunning README review...")
+    state = readme_review_tool(state)
+    print_tool_result("README review result", state)
 
     print("\nCurrent state summary:")
     print(f"Repo path: {state['repo_path']}")
