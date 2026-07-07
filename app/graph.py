@@ -2,17 +2,11 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
+from app.planner import planner_node
 from app.state import CodeReviewState
-from app.tools.code_search import code_search_tool
-from app.tools.dependency_check import dependency_check_tool
-from app.tools.env_config_check import env_config_check_tool
-from app.tools.llm_review import llm_review_tool
-from app.tools.readme_review import readme_review_tool
+from app.tool_executor import tool_executor_node
 from app.tools.report_generator import report_generator_tool
 from app.tools.repo_loader import repo_loader_tool
-from app.tools.repo_structure import repo_structure_tool
-from app.tools.security_scan import security_scan_tool
-from app.tools.test_discovery import test_discovery_tool
 
 
 def route_after_repo_loader(state: CodeReviewState) -> str:
@@ -32,18 +26,29 @@ def route_after_repo_loader(state: CodeReviewState) -> str:
     return "continue"
 
 
+def route_after_planner(state: CodeReviewState) -> str:
+    decision = state.get("tool_decision")
+
+    if decision is None:
+        return "report"
+
+    if isinstance(decision, dict):
+        next_tool = decision.get("next_tool")
+    else:
+        next_tool = decision.next_tool
+
+    if next_tool == "report_generator_tool":
+        return "report"
+
+    return "execute"
+
+
 def build_code_review_graph():
     graph = StateGraph(CodeReviewState)
 
     graph.add_node("repo_loader", repo_loader_tool)
-    graph.add_node("repo_structure", repo_structure_tool)
-    graph.add_node("dependency_check", dependency_check_tool)
-    graph.add_node("env_config_check", env_config_check_tool)
-    graph.add_node("security_scan", security_scan_tool)
-    graph.add_node("code_search", code_search_tool)
-    graph.add_node("test_discovery", test_discovery_tool)
-    graph.add_node("readme_review", readme_review_tool)
-    graph.add_node("llm_review", llm_review_tool)
+    graph.add_node("planner", planner_node)
+    graph.add_node("tool_executor", tool_executor_node)
     graph.add_node("report_generator", report_generator_tool)
 
     graph.add_edge(START, "repo_loader")
@@ -52,19 +57,21 @@ def build_code_review_graph():
         "repo_loader",
         route_after_repo_loader,
         {
-            "continue": "repo_structure",
+            "continue": "planner",
             "stop": END,
         },
     )
 
-    graph.add_edge("repo_structure", "dependency_check")
-    graph.add_edge("dependency_check", "env_config_check")
-    graph.add_edge("env_config_check", "security_scan")
-    graph.add_edge("security_scan", "code_search")
-    graph.add_edge("code_search", "test_discovery")
-    graph.add_edge("test_discovery", "readme_review")
-    graph.add_edge("readme_review", "llm_review")
-    graph.add_edge("llm_review", "report_generator")
+    graph.add_conditional_edges(
+        "planner",
+        route_after_planner,
+        {
+            "execute": "tool_executor",
+            "report": "report_generator",
+        },
+    )
+
+    graph.add_edge("tool_executor", "planner")
     graph.add_edge("report_generator", END)
 
     return graph.compile()

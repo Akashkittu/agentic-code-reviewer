@@ -6,3 +6,7 @@ GitPython
 openai
 google-genai
 anthropic
+fastapi
+uvicorn
+jinja2
+python-multipart

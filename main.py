@@ -31,8 +31,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-iterations",
         type=int,
-        default=4,
-        help="Maximum LangGraph iterations. Default: 4",
+        default=8,
+        help="Maximum planner/tool iterations. Default: 8",
     )
 
     return parser.parse_args()
@@ -75,6 +75,23 @@ def print_tool_trace(state: CodeReviewState) -> None:
             f"{index}. {result.tool_name} "
             f"-> {result.status.upper()} "
             f"-> {result.summary}"
+        )
+
+
+def print_planner_trace(state: CodeReviewState) -> None:
+    print("\nAgentic planner decisions:")
+
+    decisions = state.get("metadata", {}).get("planner_decisions", [])
+
+    if not decisions:
+        print("- No planner decisions recorded")
+        return
+
+    for item in decisions:
+        print(
+            f"- Iteration {item.get('iteration')}: "
+            f"{item.get('next_tool')} "
+            f"({item.get('source')}) -> {item.get('reason')}"
         )
 
 
@@ -142,10 +159,11 @@ def main() -> None:
 
     initial_state = build_initial_state(request)
 
-    print("\nStarting LangGraph workflow...")
+    print("\nStarting LangGraph agentic workflow...")
     final_state = run_code_review_graph(initial_state)
 
     print_tool_trace(final_state)
+    print_planner_trace(final_state)
     print_final_summary(final_state)
 
     tool_results = final_state.get("tool_results", [])
@@ -160,11 +178,8 @@ def main() -> None:
             print("\nRepo loading failed. Workflow stopped early.")
             sys.exit(400)
 
-    print("\nLangGraph workflow completed.")
-    print(
-        "\nNext step will add LLM provider fallback: "
-        "OpenAI -> Gemini -> Claude -> static fallback."
-    )
+    print("\nLangGraph agentic workflow completed.")
+    print("\nNext step will improve README and prepare the demo video script.")
 
 
 if __name__ == "__main__":

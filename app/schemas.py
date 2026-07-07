@@ -25,6 +25,7 @@ AllowedTool = Literal[
     "performance_review_tool",
     "llm_usage_review_tool",
     "agentic_workflow_review_tool",
+    "llm_review_tool",
     "report_generator_tool",
 ]
 
@@ -35,7 +36,7 @@ Severity = Literal["info", "low", "medium", "high", "critical"]
 class ReviewRequest(BaseModel):
     repo_path: Optional[str] = None
     repo_url: Optional[HttpUrl] = None
-    max_iterations: int = Field(default=4, ge=1, le=8)
+    max_iterations: int = Field(default=8, ge=1, le=8)
 
     @model_validator(mode="after")
     def validate_one_input(self):
